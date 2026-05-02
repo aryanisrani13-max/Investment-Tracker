@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    background-color: #0a0a0a;
+    color: #ffffff;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "ss01", "cv11", "tnum";
+    overscroll-behavior-y: none;
+  }
+
+  /* Use tabular numbers everywhere prices live */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  /* Hide scrollbars but keep scroll */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Cancel default focus ring everywhere except keyboard focus on inputs */
+  button:focus,
+  button:focus-visible {
+    outline: none;
+  }
+  input:focus {
+    outline: none;
+  }
+}
