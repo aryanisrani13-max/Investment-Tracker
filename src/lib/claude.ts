@@ -14,7 +14,7 @@ import type {
  *   response: { text: string }
  *
  * The proxy is responsible for holding the Anthropic API key and forwarding to
- * the Messages API using model "claude-opus-4-7". A reference implementation
+ * the Messages API using model "claude-sonnet-4-6". A reference implementation
  * (Supabase edge function, Cloudflare Worker, Vercel Function) takes ~30 LOC.
  *
  * If no proxy URL is configured, callClaude() returns a structured fallback so
@@ -22,7 +22,7 @@ import type {
  * render useful (if generic) content.
  */
 
-const MODEL = "claude-opus-4-7";
+const MODEL = "claude-sonnet-4-6";
 
 function proxyUrl(): string | null {
   const url = import.meta.env.VITE_CLAUDE_PROXY_URL;
@@ -216,5 +216,5 @@ function fallbackResearch(symbol: string, name: string): ResearchSummary {
 }
 
 function fallbackLearn(topic: string): string {
-  return `An AI-generated explanation of "${topic}" will appear here once a Claude proxy is configured. The proxy holds your Anthropic API key safely on the server side, so it never ships in the browser bundle.\n\nSet VITE_CLAUDE_PROXY_URL in your .env file to a small backend endpoint that forwards { system, user, max_tokens } to the Anthropic Messages API using model claude-opus-4-7 and returns { text }. A Supabase edge function or Vercel function works perfectly.`;
+  return `An AI-generated explanation of "${topic}" will appear here once a Claude proxy is configured. The proxy holds your Anthropic API key safely on the server side, so it never ships in the browser bundle.\n\nSet VITE_CLAUDE_PROXY_URL in your .env file to a small backend endpoint that forwards { system, user, max_tokens } to the Anthropic Messages API using model claude-sonnet-4-6 and returns { text }. A Supabase edge function or Vercel function works perfectly.`;
 }

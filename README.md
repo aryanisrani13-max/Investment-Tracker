@@ -17,7 +17,7 @@ Open http://localhost:5173.
 | Var | Purpose | Required |
 |---|---|---|
 | `VITE_FINNHUB_KEY` | Free key from https://finnhub.io/dashboard. Used for search, quotes, company profiles, sparkline. | Yes |
-| `VITE_CLAUDE_PROXY_URL` | URL of a backend proxy that forwards to the Anthropic Messages API using `claude-opus-4-7`. Powers Research summaries and Learn explanations. | No (graceful fallback) |
+| `VITE_CLAUDE_PROXY_URL` | URL of a backend proxy that forwards to the Anthropic Messages API using `claude-sonnet-4-6`. Powers Research summaries and Learn explanations. | No (graceful fallback) |
 
 ### Why a proxy for Claude?
 
@@ -60,4 +60,4 @@ This is a standard Vite + React + TS project. Drop the entire folder into Lovabl
 - Recharts for the area chart and sparklines
 - lucide-react for icons
 - Finnhub for market data
-- Anthropic `claude-opus-4-7` for AI features (via proxy)
+- Anthropic `claude-sonnet-4-6` for AI features (via proxy)
