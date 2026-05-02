@@ -7,7 +7,10 @@ import type { ReactNode } from "react";
 export function MobileShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen w-full bg-bg flex justify-center">
-      <div className="relative w-full max-w-[440px] min-h-screen bg-bg flex flex-col overflow-hidden">
+      <div
+        className="relative w-full max-w-[440px] min-h-screen bg-bg flex flex-col overflow-hidden"
+        style={{ paddingBottom: "calc(4rem + env(safe-area-inset-bottom))" }}
+      >
         {children}
       </div>
     </div>
