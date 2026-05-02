@@ -1,3 +1,4 @@
+import { supabase } from './supabase';
 import type {
   Goal,
   Holding,
@@ -7,121 +8,181 @@ import type {
   RealizedTrade,
   Snapshot,
   WatchlistItem,
-} from "./types";
+} from './types';
 
-const KEYS = {
-  holdings: "portfolio-holdings",
-  snapshots: "portfolio-snapshots",
-  goal: "investment-goal",
-  appOpened: "app-opened",
-  startingValue: "portfolio-starting-value",
-  learnCache: "learn-topic-cache",
-  researchCache: "research-cache",
-  watchlist: "watchlist",
-  journal: "journal",
-  milestones: "milestones",
-  realized: "realized-trades",
-  briefingPrefix: "briefing-",
-} as const;
-
-function read<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function write<T>(key: string, value: T): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // quota exceeded — silently ignore
-  }
-}
+// ─── Holdings ───────────────────────────────────────────────────────────────
 
 export const storage = {
-  getHoldings(): Holding[] {
-    return read<Holding[]>(KEYS.holdings, []);
+  async getHoldings(): Promise<Holding[]> {
+    const { data, error } = await supabase.from('holdings').select('*').order('created_at');
+    if (error) { console.error(error); return []; }
+    return (data ?? []).map((r) => ({
+      symbol: r.symbol,
+      name: r.name ?? r.symbol,
+      shares: Number(r.shares),
+      costBasis: Number(r.avg_cost),
+      logo: r.logo ?? undefined,
+      addedAt: new Date(r.created_at).getTime(),
+    }));
   },
-  setHoldings(h: Holding[]): void {
-    write(KEYS.holdings, h);
+
+  async setHoldings(holdings: Holding[]): Promise<void> {
+    await supabase.from('holdings').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (holdings.length === 0) return;
+    const rows = holdings.map((h) => ({
+      symbol: h.symbol,
+      name: h.name,
+      shares: h.shares,
+      avg_cost: h.costBasis,
+      logo: h.logo ?? null,
+    }));
+    const { error } = await supabase.from('holdings').insert(rows);
+    if (error) console.error(error);
   },
-  getSnapshots(): Snapshot[] {
-    return read<Snapshot[]>(KEYS.snapshots, []);
+
+  // ─── Snapshots ────────────────────────────────────────────────────────────
+
+  async getSnapshots(): Promise<Snapshot[]> {
+    const { data, error } = await supabase.from('snapshots').select('*').order('t');
+    if (error) { console.error(error); return []; }
+    return (data ?? []).map((r) => ({ t: Number(r.t), v: Number(r.value) }));
   },
-  setSnapshots(s: Snapshot[]): void {
-    write(KEYS.snapshots, s);
+
+  async setSnapshots(snapshots: Snapshot[]): Promise<void> {
+    await supabase.from('snapshots').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (snapshots.length === 0) return;
+    const rows = snapshots.map((s) => ({ t: s.t, value: s.v }));
+    const { error } = await supabase.from('snapshots').insert(rows);
+    if (error) console.error(error);
   },
-  appendSnapshot(s: Snapshot): Snapshot[] {
-    const list = storage.getSnapshots();
-    // Coalesce: if last snapshot is within 60s, replace it instead of stacking
+
+  async appendSnapshot(s: Snapshot): Promise<Snapshot[]> {
+    const list = await storage.getSnapshots();
     const last = list[list.length - 1];
     if (last && s.t - last.t < 60_000) {
       list[list.length - 1] = s;
     } else {
       list.push(s);
     }
-    // Keep at most ~5000 snapshots
     if (list.length > 5000) list.splice(0, list.length - 5000);
-    storage.setSnapshots(list);
+    await storage.setSnapshots(list);
     return list;
   },
-  getGoal(): Goal | null {
-    return read<Goal | null>(KEYS.goal, null);
+
+  // ─── Goal ─────────────────────────────────────────────────────────────────
+
+  async getGoal(): Promise<Goal | null> {
+    const { data, error } = await supabase.from('goals').select('*').order('created_at', { ascending: false }).limit(1);
+    if (error || !data || data.length === 0) return null;
+    return { amount: Number(data[0].target), note: data[0].label ?? '' };
   },
-  setGoal(g: Goal): void {
-    write(KEYS.goal, g);
+
+  async setGoal(g: Goal): Promise<void> {
+    await supabase.from('goals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    const { error } = await supabase.from('goals').insert({ target: g.amount, label: g.note });
+    if (error) console.error(error);
   },
-  hasOpened(): boolean {
-    return read<boolean>(KEYS.appOpened, false);
-  },
-  markOpened(): void {
-    write(KEYS.appOpened, true);
-  },
+
+  // ─── App opened (keep in memory — trivial flag) ───────────────────────────
+
+  _opened: false,
+  hasOpened(): boolean { return storage._opened; },
+  markOpened(): void { storage._opened = true; },
+
+  // ─── Starting value (localStorage fallback — not critical) ───────────────
+
   getStartingValue(): number {
-    return read<number>(KEYS.startingValue, 1000);
+    try { return Number(localStorage.getItem('portfolio-starting-value') ?? '1000') || 1000; } catch { return 1000; }
   },
   setStartingValue(n: number): void {
-    write(KEYS.startingValue, n);
+    try { localStorage.setItem('portfolio-starting-value', String(n)); } catch {}
   },
+
+  // ─── Learn / Research caches (localStorage — ephemeral, not critical) ────
+
   getLearnCache(): Record<string, string> {
-    return read<Record<string, string>>(KEYS.learnCache, {});
+    try { return JSON.parse(localStorage.getItem('learn-topic-cache') ?? '{}'); } catch { return {}; }
   },
   setLearnCache(cache: Record<string, string>): void {
-    write(KEYS.learnCache, cache);
+    try { localStorage.setItem('learn-topic-cache', JSON.stringify(cache)); } catch {}
   },
   getResearchCache(): Record<string, unknown> {
-    return read<Record<string, unknown>>(KEYS.researchCache, {});
+    try { return JSON.parse(localStorage.getItem('research-cache') ?? '{}'); } catch { return {}; }
   },
   setResearchCache(cache: Record<string, unknown>): void {
-    write(KEYS.researchCache, cache);
+    try { localStorage.setItem('research-cache', JSON.stringify(cache)); } catch {}
   },
 
-  getWatchlist(): WatchlistItem[] {
-    return read<WatchlistItem[]>(KEYS.watchlist, []);
-  },
-  setWatchlist(list: WatchlistItem[]): void {
-    write(KEYS.watchlist, list);
+  // ─── Watchlist ────────────────────────────────────────────────────────────
+
+  async getWatchlist(): Promise<WatchlistItem[]> {
+    const { data, error } = await supabase.from('watchlist').select('*').order('added_at');
+    if (error) { console.error(error); return []; }
+    return (data ?? []).map((r) => ({
+      symbol: r.symbol,
+      name: r.name ?? r.symbol,
+      logo: r.logo ?? undefined,
+      note: r.note ?? '',
+      addedAt: new Date(r.added_at).getTime(),
+    }));
   },
 
-  getJournal(): JournalEntry[] {
-    return read<JournalEntry[]>(KEYS.journal, []);
+  async setWatchlist(list: WatchlistItem[]): Promise<void> {
+    await supabase.from('watchlist').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (list.length === 0) return;
+    const rows = list.map((w) => ({
+      symbol: w.symbol,
+      name: w.name,
+      logo: w.logo ?? null,
+      note: w.note,
+    }));
+    const { error } = await supabase.from('watchlist').insert(rows);
+    if (error) console.error(error);
   },
-  appendJournal(entry: JournalEntry): JournalEntry[] {
-    const list = storage.getJournal();
-    list.push(entry);
-    storage.setJournal(list);
-    return list;
+
+  // ─── Journal ──────────────────────────────────────────────────────────────
+
+  async getJournal(): Promise<JournalEntry[]> {
+    const { data, error } = await supabase.from('journal').select('*').order('t');
+    if (error) { console.error(error); return []; }
+    return (data ?? []).map((r) => ({
+      id: r.id,
+      t: Number(r.t),
+      symbol: r.symbol ?? undefined,
+      action: r.action ?? undefined,
+      title: r.title,
+      body: r.body,
+    }));
   },
-  setJournal(list: JournalEntry[]): void {
-    write(KEYS.journal, list);
+
+  async appendJournal(entry: JournalEntry): Promise<JournalEntry[]> {
+    const { error } = await supabase.from('journal').insert({
+      id: entry.id,
+      t: entry.t,
+      symbol: entry.symbol ?? null,
+      action: entry.action ?? null,
+      title: entry.title,
+      body: entry.body,
+    });
+    if (error) console.error(error);
+    return storage.getJournal();
   },
+
+  async setJournal(list: JournalEntry[]): Promise<void> {
+    await supabase.from('journal').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    if (list.length === 0) return;
+    const rows = list.map((e) => ({
+      id: e.id, t: e.t, symbol: e.symbol ?? null,
+      action: e.action ?? null, title: e.title, body: e.body,
+    }));
+    const { error } = await supabase.from('journal').insert(rows);
+    if (error) console.error(error);
+  },
+
+  // ─── Milestones (localStorage — device-local celebrations are fine) ───────
 
   getMilestones(): Milestone[] {
-    return read<Milestone[]>(KEYS.milestones, []);
+    try { return JSON.parse(localStorage.getItem('milestones') ?? '[]'); } catch { return []; }
   },
   hasMilestone(id: MilestoneId): boolean {
     return storage.getMilestones().some((m) => m.id === id);
@@ -131,32 +192,54 @@ export const storage = {
     const m: Milestone = { id, reachedAt: Date.now() };
     const list = storage.getMilestones();
     list.push(m);
-    write(KEYS.milestones, list);
+    try { localStorage.setItem('milestones', JSON.stringify(list)); } catch {}
     return m;
   },
 
-  getRealized(): RealizedTrade[] {
-    return read<RealizedTrade[]>(KEYS.realized, []);
-  },
-  appendRealized(t: RealizedTrade): RealizedTrade[] {
-    const list = storage.getRealized();
-    list.push(t);
-    write(KEYS.realized, list);
-    return list;
+  // ─── Realized trades ──────────────────────────────────────────────────────
+
+  async getRealized(): Promise<RealizedTrade[]> {
+    const { data, error } = await supabase.from('realized_trades').select('*').order('sold_at');
+    if (error) { console.error(error); return []; }
+    return (data ?? []).map((r) => ({
+      id: r.id,
+      symbol: r.symbol,
+      name: r.name ?? r.symbol,
+      shares: Number(r.shares),
+      salePrice: Number(r.sell_price),
+      costBasis: Number(r.buy_price),
+      soldAt: new Date(r.sold_at).getTime(),
+      realizedGain: Number(r.realized_gain ?? 0),
+    }));
   },
 
+  async appendRealized(t: RealizedTrade): Promise<RealizedTrade[]> {
+    const { error } = await supabase.from('realized_trades').insert({
+      id: t.id,
+      symbol: t.symbol,
+      name: t.name,
+      shares: t.shares,
+      sell_price: t.salePrice,
+      buy_price: t.costBasis,
+      realized_gain: t.realizedGain,
+    });
+    if (error) console.error(error);
+    return storage.getRealized();
+  },
+
+  // ─── Daily briefing cache (localStorage — ephemeral) ─────────────────────
+
   getBriefing(dateKey: string): string | null {
-    return read<string | null>(`${KEYS.briefingPrefix}${dateKey}`, null);
+    try { return localStorage.getItem(`briefing-${dateKey}`); } catch { return null; }
   },
   setBriefing(dateKey: string, text: string): void {
-    write(`${KEYS.briefingPrefix}${dateKey}`, text);
+    try { localStorage.setItem(`briefing-${dateKey}`, text); } catch {}
   },
 };
 
-/** YYYYMMDD in the user's local timezone — used to key the daily briefing cache */
 export function todayKey(now: Date = new Date()): string {
   const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
   return `${y}${m}${d}`;
 }
