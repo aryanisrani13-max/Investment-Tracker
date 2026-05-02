@@ -1,13 +1,12 @@
 import type { ReactNode } from "react";
 
-/**
- * Centers the app inside a phone-shaped column on desktop.
- * On mobile, takes full screen.
- */
 export function MobileShell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen w-full bg-bg flex justify-center">
-      <div className="relative w-full max-w-[440px] min-h-screen bg-bg flex flex-col overflow-hidden">
+    <div className="w-full bg-bg flex justify-center" style={{ height: "100dvh" }}>
+      <div
+        className="relative w-full max-w-[440px] bg-bg flex flex-col overflow-hidden"
+        style={{ height: "100dvh" }}
+      >
         {children}
       </div>
     </div>
