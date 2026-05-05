@@ -38,12 +38,19 @@ async function get<T>(path: string, params: Record<string, string | number>): Pr
 // In-memory cache for profiles (logos rarely change)
 const profileCache = new Map<string, CompanyProfile>();
 
+// Allowed dot-suffixes for Canadian/international exchanges
+const ALLOWED_SUFFIXES = [".TO", ".V", ".CN"];
+
+function isAllowedSymbol(symbol: string): boolean {
+  if (!symbol.includes(".")) return symbol.length <= 5;
+  return ALLOWED_SUFFIXES.some((suffix) => symbol.endsWith(suffix));
+}
+
 export const finnhub = {
   async search(query: string): Promise<SearchResult[]> {
     if (!query.trim()) return [];
     const data = await get<{ result: SearchResult[] }>("/search", { q: query.trim() });
-    // Filter to common stock & ETFs only, drop weird suffixes (ADRs etc. still pass)
-    return (data.result ?? []).filter((r) => !r.symbol.includes(".") && r.symbol.length <= 5).slice(0, 12);
+    return (data.result ?? []).filter((r) => isAllowedSymbol(r.symbol)).slice(0, 12);
   },
 
   async quote(symbol: string): Promise<LivePrice> {
@@ -91,19 +98,16 @@ export const finnhub = {
     return profile;
   },
 
-  /**
-   * Last 3-7 days of company news. Free tier supports this endpoint.
-   */
   async companyNews(symbol: string, days = 7): Promise<NewsItem[]> {
     const to = new Date();
     const from = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const fmt = (d: Date) => d.toISOString().slice(0, 10); // YYYY-MM-DD
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
     type Raw = {
       id: number;
       headline: string;
       source: string;
       url: string;
-      datetime: number; // unix seconds
+      datetime: number;
       image?: string;
     };
     try {
@@ -128,11 +132,6 @@ export const finnhub = {
     }
   },
 
-  /**
-   * Returns 52-week high/low and (if available on the user's plan) pre-market
-   * and after-hours quotes. The free tier returns the metrics but leaves
-   * extended-hours fields undefined; we surface that as null.
-   */
   async metric(symbol: string): Promise<StockMetric> {
     type Raw = {
       metric?: {
@@ -149,8 +148,6 @@ export const finnhub = {
     } catch {
       // fall through with nulls
     }
-    // Pre/after-hours data lives behind the paid plan (/stock/extended-quote).
-    // Try it; on 403 we just return nulls.
     let pre: { p: number; d: number; dp: number } | null = null;
     let aft: { p: number; d: number; dp: number } | null = null;
     try {
@@ -181,11 +178,6 @@ export const finnhub = {
     };
   },
 
-  /**
-   * Historical daily candles for the detail page chart. Free tier rejects
-   * /stock/candle on most symbols — gracefully fall back to the synthesized
-   * sparkline (returns null so callers can decide).
-   */
   async candleHistorical(symbol: string, days = 90): Promise<Candle[] | null> {
     try {
       const to = Math.floor(Date.now() / 1000);
@@ -204,16 +196,8 @@ export const finnhub = {
     }
   },
 
-  /**
-   * Free Finnhub plan no longer includes /stock/candle — fall back to
-   * synthesizing a tiny sparkline from a sequence of recent quotes.
-   * For the app's "7-day sparkline" we just synthesize from prevClose -> price
-   * with a smooth curve; for the Progress tab graph we use locally captured
-   * snapshots, which is more accurate for the user's actual portfolio.
-   */
   async sparkline(symbol: string, points = 14): Promise<Candle[]> {
     const q = await finnhub.quote(symbol);
-    // Simple synthesized walk between prevClose and current price, deterministic
     const start = q.prevClose || q.price;
     const end = q.price;
     const out: Candle[] = [];
@@ -221,12 +205,10 @@ export const finnhub = {
     const stepMs = (24 * 60 * 60 * 1000) / points;
     for (let i = 0; i < points; i++) {
       const f = i / (points - 1);
-      // soft sine wobble around linear interpolation for visual interest
       const base = start + (end - start) * f;
       const wobble = Math.sin(f * Math.PI * 2 + symbol.charCodeAt(0)) * Math.abs(end - start) * 0.18;
       out.push({ t: now - (points - 1 - i) * stepMs, c: base + wobble });
     }
-    // Force the final point to equal the actual current price
     if (out.length) out[out.length - 1].c = end;
     return out;
   },
