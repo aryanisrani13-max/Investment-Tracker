@@ -34,13 +34,13 @@ function newId(): string {
 
 export default function App() {
   const [tab, setTab] = useState<TabId>("portfolio");
-  const [holdings, setHoldings] = useState<Holding[]>(() => storage.getHoldings());
+  const [holdings, setHoldings] = useState<Holding[]>([]);
   const [prices, setPrices] = useState<Record<string, LivePrice>>({});
-  const [snapshots, setSnapshots] = useState<Snapshot[]>(() => storage.getSnapshots());
-  const [goal, setGoalState] = useState<Goal | null>(() => storage.getGoal());
-  const [journal, setJournal] = useState<JournalEntry[]>(() => storage.getJournal());
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [goal, setGoalState] = useState<Goal | null>(null);
+  const [journal, setJournal] = useState<JournalEntry[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>(() => storage.getMilestones());
-  const [realized, setRealized] = useState<RealizedTrade[]>(() => storage.getRealized());
+  const [realized, setRealized] = useState<RealizedTrade[]>([]);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [onboarding, setOnboarding] = useState<boolean>(() => !storage.hasOpened());
@@ -49,7 +49,26 @@ export default function App() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [prefillSymbol, setPrefillSymbol] = useState<string | null>(null);
   const refreshTimer = useRef<number | null>(null);
-  const tickRerender = useState(0)[1]; // forces "Updated Xs ago" to refresh
+  const tickRerender = useState(0)[1];
+
+  // Load all async data on mount
+  useEffect(() => {
+    async function loadAll() {
+      const [h, s, g, j, r] = await Promise.all([
+        storage.getHoldings(),
+        storage.getSnapshots(),
+        storage.getGoal(),
+        storage.getJournal(),
+        storage.getRealized(),
+      ]);
+      setHoldings(h);
+      setSnapshots(s);
+      setGoalState(g);
+      setJournal(j);
+      setRealized(r);
+    }
+    loadAll();
+  }, []);
 
   // Persist holdings whenever they change
   useEffect(() => {
@@ -70,15 +89,14 @@ export default function App() {
       setPrices(map);
       setLastUpdated(Date.now());
 
-      // Snapshot the current portfolio value
       const { stats } = computeStats(holdings, map);
       if (stats.totalValue > 0) {
-        const next = storage.appendSnapshot({ t: Date.now(), v: stats.totalValue });
+        const next = await storage.appendSnapshot({ t: Date.now(), v: stats.totalValue });
         setSnapshots(next);
       }
       checkMilestones(stats.totalGain, stats.totalGainPct, holdings.length);
     } catch {
-      // swallow — UI shows last good prices
+      // swallow
     } finally {
       setRefreshing(false);
     }
@@ -106,7 +124,7 @@ export default function App() {
     if (!storage.hasOpened()) storage.markOpened();
   }, []);
 
-  function appendJournal(partial: Omit<JournalEntry, "id" | "t"> & { t?: number }): void {
+  async function appendJournal(partial: Omit<JournalEntry, "id" | "t"> & { t?: number }): Promise<void> {
     const entry: JournalEntry = {
       id: newId(),
       t: partial.t ?? Date.now(),
@@ -115,8 +133,8 @@ export default function App() {
       title: partial.title,
       body: partial.body,
     };
-    storage.appendJournal(entry);
-    setJournal((curr) => [...curr, entry]);
+    const updated = await storage.appendJournal(entry);
+    setJournal(updated);
   }
 
   function checkMilestones(totalGain: number, totalGainPct: number, holdingsCount: number) {
@@ -135,7 +153,6 @@ export default function App() {
   function addHolding(h: Holding) {
     let isNew = true;
     setHoldings((curr) => {
-      // If symbol exists, fold shares in (weighted average cost basis)
       const existing = curr.find((x) => x.symbol === h.symbol);
       if (existing) {
         isNew = false;
@@ -156,7 +173,6 @@ export default function App() {
         ? `Bought ${h.shares} shares of ${h.symbol} at $${h.costBasis.toFixed(2)}.`
         : `Added ${h.shares} more shares of ${h.symbol} at $${h.costBasis.toFixed(2)}.`,
     });
-    // refresh in the background to grab the new price
     setTimeout(refresh, 50);
   }
 
@@ -188,14 +204,11 @@ export default function App() {
       soldAt: Date.now(),
       realizedGain,
     };
-    storage.appendRealized(trade);
-    setRealized((curr) => [...curr, trade]);
+    storage.appendRealized(trade).then(setRealized);
 
     if (sold >= holding.shares) {
-      // Selling everything — drop the holding
       setHoldings((curr) => curr.filter((h) => h.symbol !== symbol));
     } else {
-      // Partial sell — keep cost basis, reduce shares
       setHoldings((curr) =>
         curr.map((h) =>
           h.symbol === symbol ? { ...h, shares: h.shares - sold } : h
@@ -219,7 +232,6 @@ export default function App() {
   function handleAddFromWatchlist(item: WatchlistItem) {
     setPrefillSymbol(item.symbol);
     setTab("portfolio");
-    // The PortfolioTab's AddHoldingSheet picks up prefillSymbol via prop.
   }
 
   const { stats } = computeStats(holdings, prices);
