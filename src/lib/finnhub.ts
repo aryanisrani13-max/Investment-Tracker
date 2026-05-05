@@ -49,8 +49,31 @@ function isAllowedSymbol(symbol: string): boolean {
 export const finnhub = {
   async search(query: string): Promise<SearchResult[]> {
     if (!query.trim()) return [];
-    const data = await get<{ result: SearchResult[] }>("/search", { q: query.trim() });
-    return (data.result ?? []).filter((r) => isAllowedSymbol(r.symbol)).slice(0, 12);
+    const q = query.trim().toUpperCase();
+
+    // Run both the bare query and a ".TO" variant in parallel so Canadian ETFs
+    // like XEQT show up when the user types "XEQT" (Finnhub sometimes only
+    // returns the TSX result under the suffixed search term).
+    const toVariant = q.endsWith(".TO") ? null : `${q}.TO`;
+    const [main, canadian] = await Promise.allSettled([
+      get<{ result: SearchResult[] }>("/search", { q }),
+      toVariant
+        ? get<{ result: SearchResult[] }>("/search", { q: toVariant })
+        : Promise.resolve({ result: [] as SearchResult[] }),
+    ]);
+
+    const mainResults = main.status === "fulfilled" ? (main.value.result ?? []) : [];
+    const canadianResults = canadian.status === "fulfilled" ? (canadian.value.result ?? []) : [];
+
+    // Merge, deduplicate by symbol, filter to allowed exchanges
+    const seen = new Set<string>();
+    const merged: SearchResult[] = [];
+    for (const r of [...mainResults, ...canadianResults]) {
+      if (seen.has(r.symbol)) continue;
+      seen.add(r.symbol);
+      if (isAllowedSymbol(r.symbol)) merged.push(r);
+    }
+    return merged.slice(0, 12);
   },
 
   async quote(symbol: string): Promise<LivePrice> {

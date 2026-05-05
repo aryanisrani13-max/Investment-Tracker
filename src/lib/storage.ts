@@ -149,7 +149,7 @@ export const storage = {
       id: r.id as string,
       t: Number(r.t),
       symbol: (r.symbol ?? undefined) as string | undefined,
-      action: (r.action ?? undefined) as string | undefined,
+      action: (r.action ?? undefined) as JournalEntry["action"],
       title: r.title as string,
       body: r.body as string,
     }));
