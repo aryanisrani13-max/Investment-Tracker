@@ -11,13 +11,18 @@ export function WatchlistTab({
 }: {
   onAddToPortfolio: (item: WatchlistItem) => void;
 }) {
-  const [items, setItems] = useState<WatchlistItem[]>(() => storage.getWatchlist());
+  const [items, setItems] = useState<WatchlistItem[]>([]);
   const [prices, setPrices] = useState<Record<string, LivePrice>>({});
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const debounceRef = useRef<number | null>(null);
+
+  // Load watchlist from storage on mount
+  useEffect(() => {
+    storage.getWatchlist().then(setItems);
+  }, []);
 
   // Fetch prices for everything in the watchlist
   useEffect(() => {
@@ -51,9 +56,9 @@ export function WatchlistTab({
     }, 250);
   }, [query]);
 
-  function persist(next: WatchlistItem[]) {
+  async function persist(next: WatchlistItem[]) {
     setItems(next);
-    storage.setWatchlist(next);
+    await storage.setWatchlist(next);
   }
 
   async function add(sr: SearchResult) {
@@ -64,7 +69,7 @@ export function WatchlistTab({
       return;
     }
     const profile = await finnhub.profile(sr.symbol).catch(() => null);
-    persist([
+    await persist([
       ...items,
       {
         symbol: sr.symbol,
@@ -79,12 +84,12 @@ export function WatchlistTab({
     setResults([]);
   }
 
-  function remove(symbol: string) {
-    persist(items.filter((i) => i.symbol !== symbol));
+  async function remove(symbol: string) {
+    await persist(items.filter((i) => i.symbol !== symbol));
   }
 
-  function updateNote(symbol: string, note: string) {
-    persist(items.map((i) => (i.symbol === symbol ? { ...i, note } : i)));
+  async function updateNote(symbol: string, note: string) {
+    await persist(items.map((i) => (i.symbol === symbol ? { ...i, note } : i)));
   }
 
   return (

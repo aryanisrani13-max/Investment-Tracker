@@ -16,13 +16,13 @@ export const storage = {
   async getHoldings(): Promise<Holding[]> {
     const { data, error } = await supabase.from('holdings').select('*').order('created_at');
     if (error) { console.error(error); return []; }
-    return (data ?? []).map((r) => ({
-      symbol: r.symbol,
-      name: r.name ?? r.symbol,
+    return (data ?? []).map((r: Record<string, unknown>) => ({
+      symbol: r.symbol as string,
+      name: (r.name ?? r.symbol) as string,
       shares: Number(r.shares),
       costBasis: Number(r.avg_cost),
-      logo: r.logo ?? undefined,
-      addedAt: new Date(r.created_at).getTime(),
+      logo: (r.logo ?? undefined) as string | undefined,
+      addedAt: new Date(r.created_at as string).getTime(),
     }));
   },
 
@@ -45,7 +45,7 @@ export const storage = {
   async getSnapshots(): Promise<Snapshot[]> {
     const { data, error } = await supabase.from('snapshots').select('*').order('t');
     if (error) { console.error(error); return []; }
-    return (data ?? []).map((r) => ({ t: Number(r.t), v: Number(r.value) }));
+    return (data ?? []).map((r: Record<string, unknown>) => ({ t: Number(r.t), v: Number(r.value) }));
   },
 
   async setSnapshots(snapshots: Snapshot[]): Promise<void> {
@@ -118,12 +118,12 @@ export const storage = {
   async getWatchlist(): Promise<WatchlistItem[]> {
     const { data, error } = await supabase.from('watchlist').select('*').order('added_at');
     if (error) { console.error(error); return []; }
-    return (data ?? []).map((r) => ({
-      symbol: r.symbol,
-      name: r.name ?? r.symbol,
-      logo: r.logo ?? undefined,
-      note: r.note ?? '',
-      addedAt: new Date(r.added_at).getTime(),
+    return (data ?? []).map((r: Record<string, unknown>) => ({
+      symbol: r.symbol as string,
+      name: (r.name ?? r.symbol) as string,
+      logo: (r.logo ?? undefined) as string | undefined,
+      note: (r.note ?? '') as string,
+      addedAt: new Date(r.added_at as string).getTime(),
     }));
   },
 
@@ -145,13 +145,13 @@ export const storage = {
   async getJournal(): Promise<JournalEntry[]> {
     const { data, error } = await supabase.from('journal').select('*').order('t');
     if (error) { console.error(error); return []; }
-    return (data ?? []).map((r) => ({
-      id: r.id,
+    return (data ?? []).map((r: Record<string, unknown>) => ({
+      id: r.id as string,
       t: Number(r.t),
-      symbol: r.symbol ?? undefined,
-      action: r.action ?? undefined,
-      title: r.title,
-      body: r.body,
+      symbol: (r.symbol ?? undefined) as string | undefined,
+      action: (r.action ?? undefined) as string | undefined,
+      title: r.title as string,
+      body: r.body as string,
     }));
   },
 
@@ -201,14 +201,14 @@ export const storage = {
   async getRealized(): Promise<RealizedTrade[]> {
     const { data, error } = await supabase.from('realized_trades').select('*').order('sold_at');
     if (error) { console.error(error); return []; }
-    return (data ?? []).map((r) => ({
-      id: r.id,
-      symbol: r.symbol,
-      name: r.name ?? r.symbol,
+    return (data ?? []).map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      symbol: r.symbol as string,
+      name: (r.name ?? r.symbol) as string,
       shares: Number(r.shares),
       salePrice: Number(r.sell_price),
       costBasis: Number(r.buy_price),
-      soldAt: new Date(r.sold_at).getTime(),
+      soldAt: new Date(r.sold_at as string).getTime(),
       realizedGain: Number(r.realized_gain ?? 0),
     }));
   },
