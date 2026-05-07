@@ -6,6 +6,7 @@ import type {
   SearchResult,
   StockMetric,
 } from "./types";
+import { yahoo, isCanadian } from "./yahoo";
 
 const BASE = "https://finnhub.io/api/v1";
 
@@ -77,6 +78,21 @@ export const finnhub = {
   },
 
   async quote(symbol: string): Promise<LivePrice> {
+    // Route Canadian stocks directly to Yahoo Finance — Finnhub free tier
+    // returns price 0 for TSX symbols.
+    if (isCanadian(symbol)) {
+      const yq = await yahoo.quote(symbol);
+      if (yq && yq.price > 0) {
+        return {
+          symbol,
+          price: yq.price,
+          prevClose: yq.prevClose,
+          dayChange: yq.dayChange,
+          dayChangePct: yq.dayChangePct,
+          fetchedAt: Date.now(),
+        };
+      }
+    }
     type Q = { c: number; pc: number; d: number; dp: number };
     const q = await get<Q>("/quote", { symbol });
     return {
@@ -91,10 +107,25 @@ export const finnhub = {
 
   async quoteMany(symbols: string[]): Promise<LivePrice[]> {
     const unique = Array.from(new Set(symbols));
-    const results = await Promise.allSettled(unique.map((s) => finnhub.quote(s)));
-    return results
-      .map((r) => (r.status === "fulfilled" ? r.value : null))
-      .filter((v): v is LivePrice => v !== null);
+    const canadian = unique.filter(isCanadian);
+    const us = unique.filter((s) => !isCanadian(s));
+
+    // Batch Canadian stocks to Yahoo Finance in one request, US to Finnhub
+    const [usResults, caResults] = await Promise.all([
+      Promise.allSettled(us.map((s) => finnhub.quote(s))),
+      yahoo.quoteMany(canadian),
+    ]);
+
+    const out: LivePrice[] = [];
+    for (const r of usResults) {
+      if (r.status === "fulfilled") out.push(r.value);
+    }
+    for (const r of caResults) {
+      if (r.price > 0) {
+        out.push({ symbol: r.symbol, price: r.price, prevClose: r.prevClose, dayChange: r.dayChange, dayChangePct: r.dayChangePct, fetchedAt: Date.now() });
+      }
+    }
+    return out;
   },
 
   async profile(symbol: string): Promise<CompanyProfile> {
