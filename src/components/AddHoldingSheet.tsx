@@ -65,7 +65,7 @@ export function AddHoldingSheet({
           profile,
           quote,
         });
-        setPricePaid(quote.price.toFixed(2));
+        if (quote.price > 0) setPricePaid(quote.price.toFixed(2));
         setStage("details");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Couldn't preload that ticker");
@@ -102,7 +102,9 @@ export function AddHoldingSheet({
     try {
       const [profile, quote] = await Promise.all([finnhub.profile(sr.symbol), finnhub.quote(sr.symbol)]);
       setSelected({ sr, profile, quote });
-      setPricePaid(quote.price.toFixed(2));
+      // Only pre-fill if we got a real price (0 means Finnhub couldn't fetch it,
+      // common for Canadian TSX stocks on the free tier)
+      if (quote.price > 0) setPricePaid(quote.price.toFixed(2));
       setStage("details");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't load that ticker");
@@ -184,12 +186,17 @@ export function AddHoldingSheet({
             className="w-full bg-[#1a1a1a] text-ink placeholder:text-muted px-4 py-3 rounded-xl text-base mb-4 tnum"
           />
 
-          <label className="block text-muted text-xs uppercase tracking-wide mb-1">Price paid per share</label>
+          <label className="block text-muted text-xs uppercase tracking-wide mb-1">
+            Price paid per share
+            {selected.quote.price === 0 && (
+              <span className="ml-2 normal-case text-muted/60">— live price unavailable, enter manually</span>
+            )}
+          </label>
           <input
             value={pricePaid}
             onChange={(e) => setPricePaid(e.target.value)}
             inputMode="decimal"
-            placeholder="0.00"
+            placeholder={selected.quote.price === 0 ? "Enter price (e.g. 32.50)" : "0.00"}
             className="w-full bg-[#1a1a1a] text-ink placeholder:text-muted px-4 py-3 rounded-xl text-base mb-6 tnum"
           />
 
