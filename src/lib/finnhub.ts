@@ -6,7 +6,12 @@ import type {
   SearchResult,
   StockMetric,
 } from "./types";
-import { yahoo, isCanadian } from "./yahoo";
+import { twelvedata } from "./twelvedata";
+
+const CANADIAN_SUFFIXES = [".TO", ".V", ".CN"];
+export function isCanadian(symbol: string): boolean {
+  return CANADIAN_SUFFIXES.some((s) => symbol.endsWith(s));
+}
 
 const BASE = "https://finnhub.io/api/v1";
 
@@ -78,15 +83,15 @@ export const finnhub = {
   },
 
   async quote(symbol: string): Promise<LivePrice> {
-    // Canadian/TSX stocks: use Yahoo Finance only — Finnhub free tier 403s on these.
+    // Canadian/TSX stocks: use Twelve Data — Finnhub free tier 403s on these.
     if (isCanadian(symbol)) {
-      const yq = await yahoo.quote(symbol);
+      const tq = await twelvedata.quote(symbol);
       return {
         symbol,
-        price: yq?.price ?? 0,
-        prevClose: yq?.prevClose ?? 0,
-        dayChange: yq?.dayChange ?? 0,
-        dayChangePct: yq?.dayChangePct ?? 0,
+        price: tq?.price ?? 0,
+        prevClose: tq?.prevClose ?? 0,
+        dayChange: tq?.dayChange ?? 0,
+        dayChangePct: tq?.dayChangePct ?? 0,
         fetchedAt: Date.now(),
       };
     }
@@ -107,10 +112,10 @@ export const finnhub = {
     const canadian = unique.filter(isCanadian);
     const us = unique.filter((s) => !isCanadian(s));
 
-    // Batch Canadian stocks to Yahoo Finance in one request, US to Finnhub
+    // Batch Canadian stocks to Twelve Data in one request, US stocks to Finnhub
     const [usResults, caResults] = await Promise.all([
       Promise.allSettled(us.map((s) => finnhub.quote(s))),
-      yahoo.quoteMany(canadian),
+      twelvedata.quoteMany(canadian),
     ]);
 
     const out: LivePrice[] = [];
