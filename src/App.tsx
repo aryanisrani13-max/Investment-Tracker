@@ -50,6 +50,8 @@ export default function App() {
   const [prefillSymbol, setPrefillSymbol] = useState<string | null>(null);
   const refreshTimer = useRef<number | null>(null);
   const tickRerender = useState(0)[1];
+  // Guard: don't write back to Supabase until initial load is done
+  const loadedRef = useRef(false);
 
   // Load all async data on mount
   useEffect(() => {
@@ -66,12 +68,15 @@ export default function App() {
       setGoalState(g);
       setJournal(j);
       setRealized(r);
+      loadedRef.current = true; // safe to persist from here on
     }
     loadAll();
   }, []);
 
-  // Persist holdings whenever they change
+  // Persist holdings whenever they change — skip the initial empty-array render
+  // that fires before Supabase data has loaded (would wipe everything otherwise)
   useEffect(() => {
+    if (!loadedRef.current) return;
     storage.setHoldings(holdings);
   }, [holdings]);
 
