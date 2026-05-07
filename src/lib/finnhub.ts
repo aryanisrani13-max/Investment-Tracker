@@ -78,20 +78,17 @@ export const finnhub = {
   },
 
   async quote(symbol: string): Promise<LivePrice> {
-    // Route Canadian stocks directly to Yahoo Finance — Finnhub free tier
-    // returns price 0 for TSX symbols.
+    // Canadian/TSX stocks: use Yahoo Finance only — Finnhub free tier 403s on these.
     if (isCanadian(symbol)) {
       const yq = await yahoo.quote(symbol);
-      if (yq && yq.price > 0) {
-        return {
-          symbol,
-          price: yq.price,
-          prevClose: yq.prevClose,
-          dayChange: yq.dayChange,
-          dayChangePct: yq.dayChangePct,
-          fetchedAt: Date.now(),
-        };
-      }
+      return {
+        symbol,
+        price: yq?.price ?? 0,
+        prevClose: yq?.prevClose ?? 0,
+        dayChange: yq?.dayChange ?? 0,
+        dayChangePct: yq?.dayChangePct ?? 0,
+        fetchedAt: Date.now(),
+      };
     }
     type Q = { c: number; pc: number; d: number; dp: number };
     const q = await get<Q>("/quote", { symbol });
@@ -139,17 +136,24 @@ export const finnhub = {
       finnhubIndustry?: string;
       weburl?: string;
     };
-    const p = await get<P>("/stock/profile2", { symbol });
-    const profile: CompanyProfile = {
-      symbol,
-      name: p.name ?? symbol,
-      logo: p.logo ?? "",
-      exchange: p.exchange ?? "",
-      industry: p.finnhubIndustry ?? "",
-      weburl: p.weburl,
-    };
-    profileCache.set(symbol, profile);
-    return profile;
+    // Finnhub 403s on TSX symbols — return a stub so the rest of the flow works
+    const stub: CompanyProfile = { symbol, name: symbol, logo: "", exchange: "", industry: "" };
+    try {
+      const p = await get<P>("/stock/profile2", { symbol });
+      const profile: CompanyProfile = {
+        symbol,
+        name: p.name ?? symbol,
+        logo: p.logo ?? "",
+        exchange: p.exchange ?? "",
+        industry: p.finnhubIndustry ?? "",
+        weburl: p.weburl,
+      };
+      profileCache.set(symbol, profile);
+      return profile;
+    } catch {
+      profileCache.set(symbol, stub);
+      return stub;
+    }
   },
 
   async companyNews(symbol: string, days = 7): Promise<NewsItem[]> {

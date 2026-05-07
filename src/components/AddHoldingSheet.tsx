@@ -107,10 +107,13 @@ export function AddHoldingSheet({
     setLoading(true);
     setError(null);
     try {
-      const [profile, quote] = await Promise.all([finnhub.profile(sr.symbol), finnhub.quote(sr.symbol)]);
+      // profile() never throws now (has internal try/catch), quote() routes
+      // Canadian symbols to Yahoo Finance instead of Finnhub.
+      const [profile, quote] = await Promise.all([
+        finnhub.profile(sr.symbol),
+        finnhub.quote(sr.symbol),
+      ]);
       setSelected({ sr, profile, quote });
-      // Only pre-fill if we got a real price (0 means Finnhub couldn't fetch it,
-      // common for Canadian TSX stocks on the free tier)
       if (quote.price > 0) setPricePaid(quote.price.toFixed(2));
       setStage("details");
     } catch (err) {
