@@ -18,6 +18,7 @@ export function WatchlistTab({
   const [searching, setSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const debounceRef = useRef<number | null>(null);
+  const searchGenRef = useRef(0);
 
   // Load watchlist from storage on mount
   useEffect(() => {
@@ -47,11 +48,14 @@ export function WatchlistTab({
       return;
     }
     debounceRef.current = window.setTimeout(async () => {
+      const gen = ++searchGenRef.current;
       setSearching(true);
       try {
-        setResults(await finnhub.search(query));
+        const r = await finnhub.search(query);
+        if (gen !== searchGenRef.current) return;
+        setResults(r);
       } finally {
-        setSearching(false);
+        if (gen === searchGenRef.current) setSearching(false);
       }
     }, 250);
   }, [query]);

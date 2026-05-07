@@ -34,6 +34,7 @@ export function AddHoldingSheet({
   const [shares, setShares] = useState("");
   const [pricePaid, setPricePaid] = useState("");
   const debounceRef = useRef<number | null>(null);
+  const searchGenRef = useRef(0);
 
   // reset when closed
   useEffect(() => {
@@ -75,23 +76,29 @@ export function AddHoldingSheet({
     })();
   }, [open, prefillSymbol, selected]);
 
-  // debounced search
+  // debounced search — generation counter ensures stale responses never
+  // overwrite state from a newer query (prevents error+results showing together)
   useEffect(() => {
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     if (!query.trim()) {
       setResults([]);
+      setError(null);
       return;
     }
     debounceRef.current = window.setTimeout(async () => {
+      const gen = ++searchGenRef.current;
       setLoading(true);
       setError(null);
       try {
         const r = await finnhub.search(query);
+        if (gen !== searchGenRef.current) return; // stale — a newer search is in flight
         setResults(r);
+        if (r.length === 0) setError("No results found");
       } catch (err) {
+        if (gen !== searchGenRef.current) return;
         setError(err instanceof Error ? err.message : "Search failed");
       } finally {
-        setLoading(false);
+        if (gen === searchGenRef.current) setLoading(false);
       }
     }, 250);
   }, [query]);
